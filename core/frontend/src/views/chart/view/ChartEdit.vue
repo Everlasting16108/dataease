@@ -1956,7 +1956,7 @@ export default {
       return this.$store.state.panel.panelInfo
     },
     showCfg() {
-      return includesAny(this.view.type, 'bar', 'line', 'area', 'gauge', 'table') && this.view.type !== 'race-bar' ||
+      return includesAny(this.view.type, 'bar', 'line', 'area', 'gauge', 'table', 'liquid') && this.view.type !== 'race-bar' ||
         equalsAny(this.view.type, 'text', 'label', 'map', 'buddle-map')
     },
     showSeniorCfg() {
@@ -1974,7 +1974,7 @@ export default {
       if (this.view.type === 'bidirectional-bar') {
         return false
       }
-      return includesAny(this.view.type, 'bar', 'line', 'area', 'gauge') ||
+      return includesAny(this.view.type, 'bar', 'line', 'area', 'gauge', 'liquid') ||
         equalsAny(this.view.type, 'text', 'label') ||
         (this.view.render === 'antv' && this.view.type.includes('table'))
     },
@@ -1985,7 +1985,7 @@ export default {
       if (this.view.type === 'bidirectional-bar') {
         return false
       }
-      return includesAny(this.view.type, 'gauge') ||
+      return includesAny(this.view.type, 'gauge', 'liquid') ||
         equalsAny(this.view.type, 'text', 'label') ||
         (this.view.render === 'antv' && this.view.type.includes('table'))
     },
@@ -1996,9 +1996,15 @@ export default {
         !equalsAny(this.view.type, 'liquid', 'bidirectional-bar',
           'word-cloud', 'table-pivot', 'label', 'richTextView', 'flow-map')
     },
+    isPlugin() {
+      const plugins = localStorage.getItem('plugin-views') && JSON.parse(localStorage.getItem('plugin-views')) || []
+      return plugins.some(plugin => plugin.value === this.view.type && plugin.render === this.view.render)
+    },
     watchChartTypeChangeObj() {
       const { type, render } = this.view
-      return { type, render }
+      const isPlugin = this.isPlugin
+      const id = this.chart.id
+      return { type, render, isPlugin, id }
     },
     ...mapState([
       'curComponent',
@@ -2036,10 +2042,24 @@ export default {
       this.$emit('typeChange', newVal)
     },
     watchChartTypeChangeObj(newVal, oldVal) {
-      if (newVal.type === oldVal.type && newVal.render === oldVal.render) {
+      this.view.isPlugin = newVal.isPlugin
+      if (newVal.id === oldVal.id && newVal.type !== oldVal.type && oldVal.type === 'table-info' && this.view.xaxis.length > 0) {
+        // 针对明细表切换为其他图表
+        this.$message({
+          showClose: true,
+          message: this.$t('chart.table_info_switch'),
+          type: 'warning'
+        })
+        this.view.xaxis = []
+      }
+      if (newVal.id === oldVal.id && newVal.type !== oldVal.type) {
+        this.view.senior.threshold = {}
+      }
+      if (newVal.type === oldVal.type && newVal.render === oldVal.render && newVal.isPlugin === oldVal.isPlugin) {
         return
       }
-      this.view.isPlugin = this.$refs['cu-chart-type'] && this.$refs['cu-chart-type'].currentIsPlugin(newVal.type, newVal.render)
+      this.setChartDefaultOptions()
+      this.calcData(true, 'chart', true, newVal.type !== oldVal.type, newVal.render !== oldVal.render)
     }
   },
   created() {
@@ -2247,17 +2267,7 @@ export default {
         parseInt(this.view.resultCount) < 1) {
         this.view.resultCount = '1000'
       }
-      if (switchType) {
-        this.view.senior.threshold = {}
-      }
-      if (switchType && (this.view.type === 'table-info' || this.chart.type === 'table-info') && this.view.xaxis.length > 0) {
-        this.$message({
-          showClose: true,
-          message: this.$t('chart.table_info_switch'),
-          type: 'warning'
-        })
-        this.view.xaxis = []
-      }
+
       const view = JSON.parse(JSON.stringify(this.view))
       view.id = this.view.id
       view.sceneId = this.view.sceneId
@@ -3317,12 +3327,14 @@ export default {
       this.$store.commit('recordViewEdit', { viewId: this.param.id, hasEdit: status })
     },
     changeChartRender() {
-      this.setChartDefaultOptions()
-      this.calcData(true, 'chart', true, false, true)
+      // 调整为监听 watchChartTypeChangeObj
+      // this.setChartDefaultOptions()
+      // this.calcData(true, 'chart', true, false, true)
     },
     changeChartType() {
-      this.setChartDefaultOptions()
-      this.calcData(true, 'chart', true, true)
+      // 调整为监听 watchChartTypeChangeObj
+      // this.setChartDefaultOptions()
+      // this.calcData(true, 'chart', true, true)
     },
 
     setChartDefaultOptions() {
